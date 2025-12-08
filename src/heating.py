@@ -8,10 +8,40 @@
 # volume = mu**3 * (4/3) * pi for a spherical heated region, where mu is the thermal diffusion length
 # mu = sqrt(D/(pi*f)), where D is the thermal diffusivity and f is the modulation frequency
 
+# -------------------------------- #
+# 0. Imports and constants         #
+# -------------------------------- #
 import numpy as np
+from waveforms import electrode_waveform
 
-SAR_limit = 0.5  # W/kg, Specific Absorption Rate limit for human exposure
+SAR_LIMIT = 0.5  # W/kg, Specific Absorption Rate limit for human exposure # TODO look up value (currently placeholder)
 
+# Device Design Parameters
+R_s = 0.1  # Ohms, resistance of the system (placeholder value)
+A_track = 1e-4  # m^2, cross-sectional area of the track (placeholder value)
+
+# Device Properties
+PDMS_thermal_conductivity = 0.16  # W/(m·K), thermal conductivity of PDMS (Polymer Data Handbook, Oxford University Press, https://ceimusb.wordpress.com/wp-content/uploads/2015/04/mark-polymer-data-handbook.pdf#page=514.00)
+
+
+# Waveform Operation Parameters
+A = 2.0  # Amperes, current through the system (placeholder value)
+carrier_f = 22e3  # Hz, modulation frequency
+PRF = 33 # Hz, pulse repetition frequency
+BD = 250e-6  # seconds, burst duration
+f_s = 1e3 # Hz, sampling frequency (for waveform generation)
+n_pulses = 33 # number of pulses
+TD = n_pulses / PRF  # seconds, total duration of the waveform
+
+# Tissue Properties
+D = 1.4e-7  # m^2/s, thermal diffusivity of tissue (placeholder value)
+density = 1000.0  # kg/m^3, density of tissue (placeholder value)
+
+
+
+# -------------------------------- #
+# 1. Functions                     #
+# -------------------------------- #
 def thermal_diffusion_length(D: float, f: float) -> float:
     '''Calculate the thermal diffusion length.
     -----
@@ -30,7 +60,7 @@ def thermal_diffusion_length(D: float, f: float) -> float:
     return mu
 
 def heated_volume(mu: float) -> float:
-    '''Calculate the volume of the heated region assuming a spherical shape.
+    '''Calculate the volume of the heated region assuming a spherical shape with radius mu (thermal diffusion length).
     -----
     Parameters:
     mu : float
@@ -44,7 +74,7 @@ def heated_volume(mu: float) -> float:
     volume = (4/3) * np.pi * mu**3
     return volume
 
-def power_absorbed(R_s: float, A_track: float, I: float, efficiency: float) -> float:
+def energy_dissipated(R_s: float, A_track: float, I: np.array) -> float:
     '''Calculate the absorbed power in the system. Simplified model, where the power loss is assumed to happen only in the tracks through resistive heating.
     -----
     Parameters:
@@ -52,10 +82,8 @@ def power_absorbed(R_s: float, A_track: float, I: float, efficiency: float) -> f
         Resistance in ohms (Ω).
     A_track : float
         Track area in square meters (m^2).
-    I   : float
+    I   : np.array
         Current in amperes (A).
-    efficiency : float
-        Efficiency of wireless power transfer (0 < efficiency <= 1).
     -------
     Returns:
     float
@@ -63,40 +91,15 @@ def power_absorbed(R_s: float, A_track: float, I: float, efficiency: float) -> f
     '''
 
     P_loss = R_s * A_track * I**2  # Power loss due to resistance
-    P_absorbed = P_loss / efficiency  # Total absorbed power considering efficiency
-    return P_absorbed
 
-def sar(power_absorbed: float, volume: float, density: float) -> float:
-    '''Calculate the Specific Absorption Rate (SAR).
-    -----
-    Parameters:
-    power_absorbed : float
-        The absorbed power in watts (W).
-    volume : float
-        The volume of the heated region in cubic meters (m^3).
-    density : float
-        The density of the tissue in kilograms per cubic meter (kg/m^3).
-    -------
-    Returns:
-    float
-        The calculated SAR in watts per kilogram (W/kg).
-    '''
+    return np.sum(P_loss)  # Total absorbed power in W
 
-    mass = volume * density  # mass in kg
-    sar = power_absorbed / mass  # SAR in W/kg
-    return sar
-
-def check_sar_limit(sar_value: float) -> bool:
-    '''Check if the calculated SAR is within the safety limit.
-    -----
-    Parameters:
-    sar_value : float
-        The calculated SAR in watts per kilogram (W/kg).
-    -------
-    Returns:
-    bool
-        True if SAR is within the limit, False otherwise.
-    '''
-
-    return sar_value <= SAR_limit
+# -------------------------------- #
+# 2. Main calculation              #
+# -------------------------------- #
+I = electrode_waveform(A, TD, PRF, BD, carrier_f, f_s)[0]  # Get current waveform
+E = energy_dissipated(R_s, A_track, I)  # Calculate absorbed power
+mu = thermal_diffusion_length(D, carrier_f)  # Calculate thermal diffusion length
+V = heated_volume(mu)  # Calculate heated volume
+mass = V * density  # Calculate mass of heated tissue
 
