@@ -13,13 +13,16 @@
 # -------------------------------- #
 import numpy as np
 from waveforms import electrode_waveform
+import matplotlib.pyplot as plt
 
 SAR_LIMIT = 0.5  # W/kg, Specific Absorption Rate limit for human exposure # TODO look up value (currently placeholder)
 TEMP_LIMIT = 1.0  # °C, Maximum allowable temperature increase in tissue # TODO confirm value
 
 # Device Design Parameters
-R_s = 0.1  # Ohms, resistance of the system (placeholder value)
-A_track = 1e-4  # m^2, cross-sectional area of the track (placeholder value)
+R_s_list = [5.0, 10.0]  # Ohms, resistance of the system (placeholder value)
+R_track = [R * (29.0/0.2) for R in R_s_list]  # Ohms, resistance of the tracks (length/resistivity) (placeholder value)
+
+
 
 # Device Properties
 PDMS_thermal_conductivity = 0.16  # W/(m·K), thermal conductivity of PDMS (Polymer Data Handbook, Oxford University Press, https://ceimusb.wordpress.com/wp-content/uploads/2015/04/mark-polymer-data-handbook.pdf#page=514.00)z
@@ -27,7 +30,6 @@ PDMS_thermal_conductivity = 0.16  # W/(m·K), thermal conductivity of PDMS (Poly
 
 # Waveform Operation Parameters
 A = 2.0  # Amperes, current through the system (placeholder value)
-carrier_f = 22e3  # Hz, modulation frequency
 PRF = 33 # Hz, pulse repetition frequency
 BD = 250e-6  # seconds, burst duration
 f_s = 1e3 # Hz, sampling frequency (for waveform generation)
@@ -35,9 +37,38 @@ n_pulses = 33 # number of pulses
 TD = n_pulses / PRF  # seconds, total duration of the waveform
 
 # Tissue Properties
-D = 1.4e-7  # m^2/s, thermal diffusivity of tissue (placeholder value)
-density = 1000.0  # kg/m^3, density of tissue (placeholder value)
+D_values = {
+    "Extracel": 1.4848e-7,
+    "Nerve": 1.26e-7,
+    "Skin": 9.8389e-8,
+    "Connective": 1.6e-7
+} # m^2/s, thermal diffusivity of tissue (placeholder value)
+c_values = {
+    "Extracel": 3997.0,
+    "Nerve": 3613.0,
+    "Skin": 3391.0,
+    "Connective": 2372.0
+}  
+density_values = {
+    "Extracel": 1011.0,
+    "Nerve": 1075.0,  
+    "Skin": 1109.0,
+    "Connective": 1027.0
+}  # kg/m^3, density of tissue (placeholder value)
 
+D_surround = np.mean([D_values["Extracel"], D_values["Skin"], D_values["Connective"]])
+c_surround = np.mean([c_values["Extracel"], c_values["Skin"], c_values["Connective"]])
+density_surround = np.mean([density_values["Extracel"], density_values["Skin"], density_values["Connective"]])
+
+carrier_pairs = [
+    (2.0, 20.0),
+    (20000.0, 22000.0),
+    (222222.0, 2.0)
+] #Hz, carrier frequency pairs (f_carrier_1, f_carrier_2)
+
+
+t = np.arange(0.0, TD, 1.0/f_s)
+dt = 1.0 / f_s
 
 
 # -------------------------------- #
@@ -75,7 +106,7 @@ def heated_volume(mu: float) -> float:
     volume = (4/3) * np.pi * mu**3
     return volume
 
-def energy_dissipated(R_s: float, A_track: float, I: np.array) -> float:
+def energy_dissipated(R_t: float, I: np.array) -> float:
     '''Calculate the absorbed power in the system. Simplified model, where the power loss is assumed to happen only in the tracks through resistive heating.
     -----
     Parameters:
@@ -91,16 +122,97 @@ def energy_dissipated(R_s: float, A_track: float, I: np.array) -> float:
         The absorbed power in watts (W).
     '''
 
-    P_loss = R_s * A_track * I**2  # Power loss due to resistance
+    P_loss = R_t * I[0]**2  # Power loss due to resistance
 
-    return np.sum(P_loss)  # Total absorbed power in W
 
-# -------------------------------- #
-# 2. Main calculation              #
-# -------------------------------- #
-I = electrode_waveform(A, TD, PRF, BD, carrier_f, f_s)[0]  # Get current waveform
-E = energy_dissipated(R_s, A_track, I)  # Calculate absorbed power
-mu = thermal_diffusion_length(D, carrier_f)  # Calculate thermal diffusion length
-V = heated_volume(mu)  # Calculate heated volume
-mass = V * density  # Calculate mass of heated tissue
+    E=np.trapezoid(P_loss, dx=1/f_s)
+    P_avg= E / TD
+    return P_avg, E
+  # Total absorbed power in W~
+
+  
+def tissue_heating(c: float, E: float, mass: float) -> float:
+    '''Calculate the temperature rise in tissue due to absorbed energy.
+    -----
+    Parameters:
+    c : float
+        Specific heat capacity of tissue in J/(kg·K).
+    E : float
+        Absorbed energy in joules (J).
+    mass : float
+        Mass of the heated tissue in kilograms (kg).
+    -------
+    Returns:
+    float
+        The temperature rise in Kelvin (K).
+    '''
+
+    delta_T = E / (c * mass)
+    return delta_T
+
+results = []
+for pair in carrier_pairs:
+    f1,f2 = pair
+    f_mod = abs(f1 - f2) if abs(f1 - f2) != 0 else f1
+    I_1= electrode_waveform(A, TD, PRF, BD, f1, f_s)[0]
+    I_2= electrode_waveform(A, TD, PRF, BD, f2, f_s)[0]
+
+    for R in R_track:
+        P_avg_1, E_1 = energy_dissipated(R, I_1)
+        P_avg_2, E_2 = energy_dissipated(R, I_2)
+        E1_total = E_1 * 3.0
+        E2_total = E_2 * 3.0
+        E_total= E1_total + E2_total
+        
+
+        for tissue_label in ["Nerve", "Surrounding"]:
+            if tissue_label == "Nerve":
+                D_local = D_values["Nerve"]
+                c_local = c_values["Nerve"]
+                density_local = density_values["Nerve"]
+                
+            else:
+                D_local = D_surround
+                c_local = c_surround
+                density_local = density_surround
+            mu = thermal_diffusion_length(D_local, f_mod)
+            V = heated_volume(mu)
+            mass = V * density_local
+            delta_T = tissue_heating(c_local, E_total, mass)
+
+
+            results.append({
+            "carrier_pair": pair,
+            "R_track": R_track,
+            "tissue": tissue_label,
+            "f_mod": f_mod,
+            "E_1": E1_total,
+            "E_2": E2_total,
+            "mu": mu,
+            "V": V,
+            "mass": mass,
+            "delta_T": delta_T
+        })
+
+#plot reuslts
+plt.figure(figsize=(7,5))
+
+for tissue_label, color, marker in [
+    ("Nerve", "tab:blue", "o"),
+    ("Surrounding", "tab:orange", "^"),
+]:
+    x = [r["f_mod"] for r in results if r["tissue"] == tissue_label]
+    y = [r["delta_T"] for r in results if r["tissue"] == tissue_label]
+
+    plt.scatter(x, y, label=tissue_label, color=color, marker=marker)
+
+plt.axhline(2.0, linestyle="--", color="red", label="2 °C limit")
+plt.xlabel("Modulation Frequency (Hz)")
+plt.ylabel("Temperature Rise (K)")
+plt.title("Temperature Rise vs Modulation Frequency")
+plt.legend()
+plt.xscale("log")  
+plt.tight_layout()
+plt.show()
+
 
