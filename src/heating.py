@@ -15,13 +15,14 @@ import numpy as np
 from waveforms import electrode_waveform
 
 SAR_LIMIT = 0.5  # W/kg, Specific Absorption Rate limit for human exposure # TODO look up value (currently placeholder)
+TEMP_LIMIT = 1.0  # °C, Maximum allowable temperature increase in tissue # TODO confirm value
 
 # Device Design Parameters
 R_s = 0.1  # Ohms, resistance of the system (placeholder value)
 A_track = 1e-4  # m^2, cross-sectional area of the track (placeholder value)
 
 # Device Properties
-PDMS_thermal_conductivity = 0.16  # W/(m·K), thermal conductivity of PDMS (Polymer Data Handbook, Oxford University Press, https://ceimusb.wordpress.com/wp-content/uploads/2015/04/mark-polymer-data-handbook.pdf#page=514.00)
+PDMS_thermal_conductivity = 0.16  # W/(m·K), thermal conductivity of PDMS (Polymer Data Handbook, Oxford University Press, https://ceimusb.wordpress.com/wp-content/uploads/2015/04/mark-polymer-data-handbook.pdf#page=514.00)z
 
 
 # Waveform Operation Parameters
@@ -56,7 +57,7 @@ def thermal_diffusion_length(D: float, f: float) -> float:
         The thermal diffusion length in meters (m).
     '''
 
-    mu = np.sqrt(D / (np.pi * f))
+    mu = np.sqrt(D / (np.pi * f)) 
     return mu
 
 def heated_volume(mu: float) -> float:
