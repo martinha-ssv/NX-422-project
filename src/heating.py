@@ -33,8 +33,7 @@ import matplotlib.pyplot as plt
 
 
 SAR_LIMIT = 0.5  # W/kg, Specific Absorption Rate limit for human exposure # TODO look up value (currently placeholder)
-
-
+TEMP_LIMIT = 1.0  # °C, Maximum allowable temperature increase in tissue # TODO confirm value
 
 # Device Design Parameters
 
@@ -49,11 +48,7 @@ R_track = [R * (29/0.2) for R in R_s_list]  # Ohms, resistance of the tracks (le
 
 
 # Device Properties
-
-PDMS_thermal_conductivity = 0.16  # W/(m·K), thermal conductivity of PDMS (Polymer Data Handbook, Oxford University Press, https://ceimusb.wordpress.com/wp-content/uploads/2015/04/mark-polymer-data-handbook.pdf#page=514.00)
-
-
-
+PDMS_thermal_conductivity = 0.16  # W/(m·K), thermal conductivity of PDMS (Polymer Data Handbook, Oxford University Press, https://ceimusb.wordpress.com/wp-content/uploads/2015/04/mark-polymer-data-handbook.pdf#page=514.00)z
 
 
 # Waveform Operation Parameters
@@ -176,13 +171,8 @@ def thermal_diffusion_length(D: float, f: float) -> float:
 
 
 
-    #mu = np.sqrt(D / (np.pi * f))
-
-    #print(f"Thermal diffusion length for f={f} Hz: {mu*1e3:.6f} mm")
-
-    return 16e-3  # Placeholder value for mu in meters (m)
-
-
+    mu = np.sqrt(D / (np.pi * f)) 
+    return mu
 
 def heated_volume(mu: float) -> float:
 
